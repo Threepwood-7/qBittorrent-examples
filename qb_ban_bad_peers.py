@@ -28,33 +28,36 @@ def is_blank(s):
 
 
 #
-## 1. ALWAYS BAN
+## 1. BAN LOGIC (LESS RESTRICTIVE, YOU LIST WHAT YOU WANT TO BAN, OTHERWISE ALLOW)
 #
 
-# you can either decide to ban specific clients..
-ban_clients = re.compile("-(A0|AX|BF|BN|DL|DP|DT|HP|LT122|LT207|MG|MP|QD|RM|RT|RZ|SD|TS|UL|XF|XL|XT|WY)(\\d+)-", re.IGNORECASE)
-# or countries..
+# you can ban specific clients..
+ban_clients = re.compile("-(A0|AX|BF|BN|DL|DP|DT|HP|LT122|LT207|MG|MP|QD|RM|RT|RZ|SD|TS|UL|XF|XL|XT|WY)([A-Z0-9]{0,4})-", re.IGNORECASE)
+
+# ..or countries..
 ban_countries = re.compile("(cn)", re.IGNORECASE)
 
 
 #
-## 2. ONLY ALLOW (MORE RESTRICTIVE, PLEASE READ)
+## 2. ALLOW LOGIC (MORE RESTRICTIVE, YOU LIST WHAT YOU WANT TO ALLOW, OTHERWISE BAN, PLEASE READ)
 #
 
-# only allow specific countries
+# you can allow only specific clients..
+# please note, if you want to be more flexible you can edit the banning logic below and just rely on the ban_clients instead (POINT 1)
+
+allow_clients = re.compile("-(AZ|BC|BI|BT|DE|LT|QB|SZ|TR|UT)([A-Z0-9]{0,4})-", re.IGNORECASE)
+
+# ..or countries..
 # it's up to you to decide https://www.countries-ofthe-world.com/TLD-list.html
-# please note, if you want to be more flexible you can edit the banning logic below and just rely on the ban_countries instead
+# please note, if you want to be more flexible you can edit the banning logic below and just rely on the ban_countries instead (POINT 1)
 
 allow_countries = re.compile(
     "(ad|ar|at|au|be|bg|br|by|ca|ch|cl|co|cy|cz|de|dk|ee|es|eu|fi|fo|fr|gb|gi|gr|hk|hr|hu|ie|il|im|is|it|jp|kr|kw|kz|li|lt|lu|lv|mc|md|me|mk|mt|mx|nl|no|nz|pa|pe|pl|pt|py|qa|ro|rs|ru|se|si|sk|sm|tw|ua|uk|us|uy|uz|va|za)",
     re.IGNORECASE,
 )
 
-# only allow specific clients
-# please note, if you want to be more flexible you can edit the banning logic below and just rely on the ban_clients instead
-
-allow_clients = re.compile("-(AZ|BC|BT|DE|LT|QB|SZ|TIX|TR|UT)(\\d+)-", re.IGNORECASE)
-
+# set to 1 to apply the filtering logic at POINT 1 (less restrictive), or set to 2 to apply the allow only logic at POINT 2 (more restrictive)
+FILTERING_LOGIC = 2
 
 #
 ## 3. ALWAYS ALLOW (OVERRIDE BAN)
@@ -91,30 +94,39 @@ for torrent in qbt_client.torrents_info(status_filter="active"):
         tor_peer_info = tor_peers.peers[tor_peer]
         p_id = tor_peer_info.peer_id_client.strip()
 
-        logger.info(f"TI [ {torrent.name} ] P [ {tor_peer} ] C [ {tor_peer_info.client} ] CI [ {p_id} ] CC [ {tor_peer_info.country_code} ] P [ {tor_peer_info.progress} ]")  # IP [ {tor_peer_info.ip} ]")
+        logger.info(f"TI [ {torrent.name} ] P [ {tor_peer} ] C [ {tor_peer_info.client} ] CI [ {p_id} ] CC [ {tor_peer_info.country_code} ] P [ {tor_peer_info.progress} ] FL [ {FILTERING_LOGIC} ]")
+
         # logger.info(f"   [ {tor_peer_info} ]\n\n")
 
         should_ban = False
 
         #
-        ## 1. ALWAYS BAN
+        ## Apply the filtering logic..
         #
 
-        # first check of banned clients
-        if "#@" == p_id or is_blank(p_id) or ban_clients.match(p_id):
-            should_ban = True
-            logger.info(f"     * Banning peer due to client [ {tor_peer_info.client} ]")
+        if FILTERING_LOGIC == 1:
 
-        #
-        ## 2. ONLY ALLOW (MORE RESTRICTIVE, PLEASE READ)
-        #
+            # first check of banned clients
+            if "#@" == p_id or is_blank(p_id) or ban_clients.match(p_id):
+                should_ban = True
+                logger.info(f"     * Banning peer due to client C [ {tor_peer_info.client} ] CI [ {p_id} ]")
 
-        # only allow specific countries
-        if not should_ban and not allow_countries.match(tor_peer_info.country_code):
-            should_ban = True
-            logger.info(f"     * Banning peer due to country [ {tor_peer_info.country_code} ]")
+            # second check on countries
+            if not should_ban and ban_countries.match(tor_peer_info.country_code):
+                should_ban = True
+                logger.info(f"     * Banning peer due to country [ {tor_peer_info.country_code} ]")
 
-        # reverse logic : if not should_ban and ban_countries.match(tor_peer_info.country_code):
+        elif FILTERING_LOGIC == 2:
+
+            # only allow specific clients
+            if not allow_clients.match(p_id):
+                should_ban = True
+                logger.info(f"     * Banning peer due to client C [ {tor_peer_info.client} ] CI [ {p_id} ]")
+
+            # only allow specific countries
+            if not should_ban and not allow_countries.match(tor_peer_info.country_code):
+                should_ban = True
+                logger.info(f"     * Banning peer due to country [ {tor_peer_info.country_code} ]")
 
         #
         ## 3. ALWAYS ALLOW (OVERRIDE BAN)
